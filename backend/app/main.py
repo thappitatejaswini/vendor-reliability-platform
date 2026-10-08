@@ -28,13 +28,58 @@ ROLES_LIST = [
     "Auditor"
 ]
 
+DEMO_USERS = [
+    {
+        "email": "admin@example.com",
+        "password": "Admin@123456",
+        "full_name": "System Administrator",
+        "role": "Administrator"
+    },
+    {
+        "email": "proc_mgr@example.com",
+        "password": "Password@123",
+        "full_name": "Sarah Jenkins (Procurement Lead)",
+        "role": "Procurement Manager"
+    },
+    {
+        "email": "pm@example.com",
+        "password": "Procurement@123456",
+        "full_name": "Procurement Manager",
+        "role": "Procurement Manager"
+    },
+    {
+        "email": "finance@example.com",
+        "password": "Finance@123456",
+        "full_name": "David Chen (Finance Officer)",
+        "role": "Finance Officer"
+    },
+    {
+        "email": "supply_chain@example.com",
+        "password": "SupplyChain@123456",
+        "full_name": "Marcus Vance (Supply Chain Manager)",
+        "role": "Supply Chain Manager"
+    },
+    {
+        "email": "vendor_user@example.com",
+        "password": "Vendor@123456",
+        "full_name": "Apex Logistics Vendor Partner",
+        "role": "Vendor"
+    },
+    {
+        "email": "auditor@example.com",
+        "password": "Auditor@123456",
+        "full_name": "Elena Rostova (Compliance Auditor)",
+        "role": "Auditor"
+    }
+]
+
 async def seed_default_admin_and_roles(db: AsyncSession) -> dict:
     """
     Idempotent seeding helper:
     1. Ensures all foundational roles exist.
-    2. Checks if admin@example.com exists; creates it if missing with Admin@123456 and APPROVED status.
-    3. If admin already exists, ensures status is APPROVED, role has Administrator,
-       and resets password hash to Admin@123456 if incorrect. Safe to call multiple times without erroring.
+    2. Checks each demo user before creating (admin@example.com, proc_mgr@example.com, etc.).
+    3. If any demo user already exists, ensures status is APPROVED, role is linked,
+       and resets password hash if incorrect. Safe to call multiple times without erroring.
     4. Seeds initial sample vendor if none exists.
     """
     try:
@@ -46,68 +91,75 @@ async def seed_default_admin_and_roles(db: AsyncSession) -> dict:
                 db.add(Role(name=r_name))
         await db.commit()
 
-        # 2. Ensure Administrator Role exists and is loaded
-        admin_role_stmt = select(Role).where(Role.name == "Administrator")
-        admin_role_res = await db.execute(admin_role_stmt)
-        admin_role = admin_role_res.scalar_one_or_none()
-        if not admin_role:
-            admin_role = Role(name="Administrator")
-            db.add(admin_role)
-            await db.commit()
-            admin_role_res = await db.execute(admin_role_stmt)
-            admin_role = admin_role_res.scalar_one_or_none()
+        # Cache existing roles
+        all_roles_res = await db.execute(select(Role))
+        role_map = {r.name: r for r in all_roles_res.scalars().all()}
 
-        # 3. Seed / Verify Admin User (case-insensitive lookup)
-        admin_stmt = (
-            select(User)
-            .where(func.lower(User.email) == "admin@example.com")
-            .options(selectinload(User.roles))
-        )
-        admin_res = await db.execute(admin_stmt)
-        admin_user = admin_res.scalar_one_or_none()
+        # 2. Seed / Verify Demo Users
+        users_summary = []
+        for u_info in DEMO_USERS:
+            target_email = u_info["email"].lower()
+            target_role_name = u_info["role"]
+            target_pwd = u_info["password"]
+            target_name = u_info["full_name"]
+            assigned_role = role_map.get(target_role_name)
 
-        action = "verified"
-        if not admin_user:
-            admin_user = User(
-                email="admin@example.com",
-                hashed_password=get_password_hash("Admin@123456"),
-                full_name="System Administrator",
-                status="APPROVED",
-                roles=[admin_role]
+            u_stmt = (
+                select(User)
+                .where(func.lower(User.email) == target_email)
+                .options(selectinload(User.roles))
             )
-            db.add(admin_user)
-            await db.commit()
-            # Reload with roles
-            admin_res = await db.execute(admin_stmt)
-            admin_user = admin_res.scalar_one()
-            action = "created"
-            logger.info("Default administrator account created: admin@example.com / Admin@123456")
-        else:
-            changed = False
-            if admin_user.status != "APPROVED":
-                admin_user.status = "APPROVED"
-                changed = True
-            if admin_user.email != "admin@example.com":
-                admin_user.email = "admin@example.com"
-                changed = True
-            if not any(r.name == "Administrator" for r in admin_user.roles):
-                admin_user.roles.append(admin_role)
-                changed = True
-            if not verify_password("Admin@123456", admin_user.hashed_password):
-                admin_user.hashed_password = get_password_hash("Admin@123456")
-                changed = True
+            u_res = await db.execute(u_stmt)
+            user_obj = u_res.scalar_one_or_none()
 
-            if changed:
+            action = "verified"
+            if not user_obj:
+                user_obj = User(
+                    email=target_email,
+                    hashed_password=get_password_hash(target_pwd),
+                    full_name=target_name,
+                    status="APPROVED",
+                    roles=[assigned_role] if assigned_role else []
+                )
+                db.add(user_obj)
                 await db.commit()
                 # Reload with roles
-                admin_res = await db.execute(admin_stmt)
-                admin_user = admin_res.scalar_one()
-                action = "updated"
-                logger.info("Default administrator account refreshed: admin@example.com / Admin@123456 (status APPROVED)")
+                u_res = await db.execute(u_stmt)
+                user_obj = u_res.scalar_one()
+                action = "created"
+                logger.info("Demo user created: %s (%s) / %s", target_email, target_role_name, target_pwd)
             else:
-                logger.info("Default administrator account already exists and is valid.")
+                changed = False
+                if user_obj.status != "APPROVED":
+                    user_obj.status = "APPROVED"
+                    changed = True
+                if user_obj.email != target_email:
+                    user_obj.email = target_email
+                    changed = True
+                if assigned_role and not any(r.name == target_role_name for r in user_obj.roles):
+                    user_obj.roles.append(assigned_role)
+                    changed = True
+                if not verify_password(target_pwd, user_obj.hashed_password):
+                    user_obj.hashed_password = get_password_hash(target_pwd)
+                    changed = True
 
-        # 4. Seed Initial Sample Vendor if none exist
+                if changed:
+                    await db.commit()
+                    u_res = await db.execute(u_stmt)
+                    user_obj = u_res.scalar_one()
+                    action = "updated"
+                    logger.info("Demo user refreshed: %s (%s)", target_email, target_role_name)
+                else:
+                    logger.info("Demo user verified: %s (%s)", target_email, target_role_name)
+
+            users_summary.append({
+                "email": user_obj.email,
+                "role": target_role_name,
+                "status": user_obj.status,
+                "action": action
+            })
+
+        # 3. Seed Initial Sample Vendor if none exist
         v_stmt = select(Vendor).limit(1)
         v_res = await db.execute(v_stmt)
         vendor_seeded = False
@@ -122,16 +174,11 @@ async def seed_default_admin_and_roles(db: AsyncSession) -> dict:
             await db.commit()
             vendor_seeded = True
 
-        # Fetch current database roles
-        all_roles_res = await db.execute(select(Role.name).order_by(Role.name))
-        all_roles = [r[0] for r in all_roles_res.all()]
+        all_roles_list = sorted(list(role_map.keys()))
 
         return {
-            "action": action,
-            "admin_email": admin_user.email,
-            "admin_status": admin_user.status,
-            "admin_roles": [r.name for r in admin_user.roles],
-            "database_roles": all_roles,
+            "demo_users": users_summary,
+            "database_roles": all_roles_list,
             "sample_vendor_seeded": vendor_seeded
         }
     except Exception as e:
@@ -233,6 +280,7 @@ async def trigger_seed_admin(
         provided_secret = secret or x_admin_secret
         valid_secrets = {
             "Admin@123456",
+            "Password@123",
             "procureflow-seed-2026",
             settings.SECRET_KEY,
             "procurement-super-secret-jwt-key-2026-production-grade"
@@ -242,13 +290,13 @@ async def trigger_seed_admin(
         if existing_admin and (provided_secret not in valid_secrets):
             raise HTTPException(
                 status_code=403,
-                detail="Admin user already exists. To refresh/repair credentials or roles, supply ?secret=Admin@123456"
+                detail="Demo users already exist. To refresh/repair credentials or roles, supply ?secret=Admin@123456"
             )
 
         result = await seed_default_admin_and_roles(db)
         return {
             "status": "success",
-            "message": "Default foundational roles and administrator account verified successfully.",
+            "message": "Default foundational roles and demo accounts verified successfully.",
             "data": result
         }
     except HTTPException:

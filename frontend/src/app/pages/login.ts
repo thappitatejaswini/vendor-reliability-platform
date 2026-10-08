@@ -84,7 +84,7 @@ import { AuthService } from '../core/auth.service';
               class="btn btn-secondary btn-sm"
               (click)="fillCredentials('admin@example.com', 'Admin@123456')"
             >
-              👑 Admin (admin&#64;example.com)
+              👑 Admin
             </button>
             <button
               id="quick-login-proc-mgr"
@@ -93,6 +93,38 @@ import { AuthService } from '../core/auth.service';
               (click)="fillCredentials('proc_mgr@example.com', 'Password@123')"
             >
               📦 Procurement Lead
+            </button>
+            <button
+              id="quick-login-finance"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              (click)="fillCredentials('finance@example.com', 'Finance@123456')"
+            >
+              💰 Finance Officer
+            </button>
+            <button
+              id="quick-login-supply-chain"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              (click)="fillCredentials('supply_chain@example.com', 'SupplyChain@123456')"
+            >
+              🔗 Supply Chain
+            </button>
+            <button
+              id="quick-login-vendor"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              (click)="fillCredentials('vendor_user@example.com', 'Vendor@123456')"
+            >
+              🚚 Vendor Partner
+            </button>
+            <button
+              id="quick-login-auditor"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              (click)="fillCredentials('auditor@example.com', 'Auditor@123456')"
+            >
+              📋 Auditor
             </button>
           </div>
         </div>
@@ -176,9 +208,23 @@ import { AuthService } from '../core/auth.service';
       margin-bottom: 0.5rem;
     }
     .quick-btns {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 0.4rem;
+    }
+    .quick-btns .btn-sm {
+      font-size: 0.78rem;
+      padding: 0.4rem 0.5rem;
+      text-align: left;
+      justify-content: flex-start;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    @media (max-width: 440px) {
+      .quick-btns {
+        grid-template-columns: 1fr;
+      }
     }
     .auth-footer {
       margin-top: 1.5rem;
